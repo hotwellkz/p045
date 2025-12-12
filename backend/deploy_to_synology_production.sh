@@ -136,10 +136,24 @@ success ".env настроен"
 
 # 8. Установка pm2 (если не установлен)
 info "Проверяю pm2..."
+PM2_CMD="pm2"
 if ! command -v pm2 &> /dev/null; then
     info "Устанавливаю pm2 глобально (требуются права root)..."
     sudo npm install -g pm2 || error "Не удалось установить pm2"
     success "pm2 установлен"
+    
+    # На Synology pm2 может быть установлен в /usr/local/bin, но PATH может не включать его
+    # Пробуем найти pm2
+    if command -v pm2 &> /dev/null; then
+        PM2_CMD="pm2"
+    elif [ -f "/usr/local/bin/pm2" ]; then
+        PM2_CMD="/usr/local/bin/pm2"
+    elif [ -f "/volume1/@appstore/Node.js_v20/usr/local/bin/pm2" ]; then
+        PM2_CMD="/volume1/@appstore/Node.js_v20/usr/local/bin/pm2"
+    else
+        # Используем npm для запуска pm2
+        PM2_CMD="sudo $(npm bin -g)/pm2"
+    fi
 else
     info "pm2 уже установлен"
 fi
