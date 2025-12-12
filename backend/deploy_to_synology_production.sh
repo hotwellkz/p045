@@ -65,8 +65,11 @@ if [ -d "$SYNO_APP_PATH/.git" ]; then
     info "Репозиторий уже существует, исправляю права доступа..."
     sudo chown -R admin:users "$SYNO_APP_PATH"
     sudo chmod -R 755 "$SYNO_APP_PATH"
-    info "Обновляю репозиторий..."
+    info "Отменяю локальные изменения перед обновлением..."
     cd "$SYNO_APP_PATH"
+    git reset --hard HEAD || true  # Отменяем локальные изменения
+    git clean -fd || true  # Удаляем неотслеживаемые файлы
+    info "Обновляю репозиторий..."
     git pull origin main || error "Не удалось обновить репозиторий"
     success "Репозиторий обновлён"
 else
