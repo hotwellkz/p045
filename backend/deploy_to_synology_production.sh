@@ -67,8 +67,11 @@ if [ -d "$SYNO_APP_PATH/.git" ]; then
     sudo chmod -R 755 "$SYNO_APP_PATH"
     info "Отменяю локальные изменения перед обновлением..."
     cd "$SYNO_APP_PATH"
-    git reset --hard HEAD || true  # Отменяем локальные изменения
-    git clean -fd || true  # Удаляем неотслеживаемые файлы
+    # Сбрасываем все изменения, включая изменённые файлы
+    git reset --hard HEAD || true
+    git clean -fd || true
+    # Принудительно откатываем deploy скрипт, если он был изменён
+    git checkout HEAD -- backend/deploy_to_synology_production.sh 2>/dev/null || true
     info "Обновляю репозиторий..."
     git pull origin main || error "Не удалось обновить репозиторий"
     success "Репозиторий обновлён"
