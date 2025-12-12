@@ -3,6 +3,7 @@ import { scheduleAutoDownload } from "./scheduledTasks";
 import { Logger } from "../utils/logger";
 import { db, isFirestoreAvailable } from "./firebaseAdmin";
 import { getAutoDownloadDelayMinutesForChannel } from "./autoSendScheduler";
+import type { Channel } from "../types/channel";
 
 export type VideoGenerationSource = "schedule" | "custom_prompt";
 
