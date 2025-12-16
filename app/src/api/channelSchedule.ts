@@ -1,6 +1,4 @@
-const backendBaseUrl =
-  (import.meta.env.VITE_BACKEND_URL as string | undefined) ||
-  "http://localhost:8080";
+import { API_BASE_URL as backendBaseUrl } from "../config/api";
 
 export interface ChannelScheduleItem {
   id: string;

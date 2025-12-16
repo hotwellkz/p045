@@ -1,9 +1,48 @@
 import { Router } from "express";
-import { db, isFirestoreAvailable } from "../services/firebaseAdmin";
+import { db, isFirestoreAvailable, isFirebaseAuthAvailable, getFirebaseAuthInfo } from "../services/firebaseAdmin";
 import { Logger } from "../utils/logger";
 import { authRequired } from "../middleware/auth";
 
 const router = Router();
+
+/**
+ * Диагностический endpoint для проверки состояния Firebase Auth
+ * GET /api/debug/auth или /internal/debug/auth
+ * Доступен только в development или с ADMIN_TOKEN
+ */
+router.get("/auth", (req, res) => {
+  // Проверка доступа: только в development или с правильным токеном
+  const adminToken = req.headers["x-admin-token"] || req.query.token;
+  const isDevelopment = process.env.NODE_ENV !== "production";
+  
+  if (!isDevelopment && adminToken !== process.env.ADMIN_TOKEN) {
+    return res.status(403).json({
+      error: "Forbidden",
+      message: "This endpoint is only available in development or with ADMIN_TOKEN"
+    });
+  }
+  
+  const authInfo = getFirebaseAuthInfo();
+  
+  res.json({
+    firebaseInitialized: authInfo.initialized,
+    firebaseAuthAvailable: isFirebaseAuthAvailable(),
+    projectId: authInfo.projectId || "unknown",
+    credentialSource: authInfo.credentialSource || "none",
+    hasCredentialSource: !!authInfo.credentialSource,
+    credentialSourceType: authInfo.credentialSource || "none",
+    error: authInfo.error || null,
+    errorDetails: authInfo.errorDetails || null,
+    env: {
+      NODE_ENV: process.env.NODE_ENV,
+      hasFirebaseServiceAccount: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+      hasFirebaseProjectId: !!process.env.FIREBASE_PROJECT_ID,
+      hasFirebaseClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+      hasFirebasePrivateKey: !!process.env.FIREBASE_PRIVATE_KEY
+    },
+    timestamp: new Date().toISOString()
+  });
+});
 
 /**
  * Debug-эндпоинт для проверки всех каналов и их настроек автоотправки

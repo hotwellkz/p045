@@ -33,9 +33,7 @@ import { fetchScheduleSettings } from "../../api/scheduleSettings";
 import { getAuthToken } from "../../utils/auth";
 import { getUserSettings, updateUserSettings } from "../../api/userSettings";
 
-const backendBaseUrl =
-  (import.meta.env.VITE_BACKEND_URL as string | undefined) ||
-  "http://localhost:8080";
+import { API_BASE_URL as backendBaseUrl } from "../../config/api";
 
 const ChannelListPage = () => {
   const navigate = useNavigate();

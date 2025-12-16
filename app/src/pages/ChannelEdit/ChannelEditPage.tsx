@@ -18,6 +18,7 @@ import { getTelegramStatus } from "../../api/telegramIntegration";
 import Accordion from "../../components/Accordion";
 import { fetchScheduleSettings, getMinIntervalForTime, type ScheduleSettings } from "../../api/scheduleSettings";
 import { useToast } from "../../hooks/useToast";
+import { API_BASE_URL as backendBaseUrl } from "../../config/api";
 import Toast from "../../components/Toast";
 import TelegramGlobalPasswordModal from "../../components/TelegramGlobalPasswordModal";
 import { FieldHelpIcon } from "../../components/aiAssistant/FieldHelpIcon";
@@ -313,9 +314,6 @@ const ChannelEditPage = () => {
       // Получаем токен авторизации
       const token = await getAuthToken();
 
-      const backendBaseUrl =
-        (import.meta.env.VITE_BACKEND_URL as string | undefined) ||
-        "http://localhost:8080";
       const exportUrl = `${backendBaseUrl}/api/channels/${channelId}/export`;
 
       const response = await fetch(exportUrl, {

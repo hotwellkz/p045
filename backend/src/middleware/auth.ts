@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import * as admin from "firebase-admin";
 import { Logger } from "../utils/logger";
+import { isFirebaseAuthAvailable, getFirebaseAuthInfo } from "../services/firebaseAdmin";
 
 export interface AuthUser {
   uid: string;
@@ -34,6 +35,11 @@ export async function authRequired(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // Пропускаем OPTIONS запросы (preflight) без проверки токена
+  if (req.method === "OPTIONS") {
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
 
   // Проверяем наличие заголовка Authorization
@@ -54,11 +60,28 @@ export async function authRequired(
   const token = authHeader.slice("Bearer ".length);
 
   // Проверяем, что Firebase Admin инициализирован
-  if (!admin.apps.length) {
-    Logger.error("authRequired: Firebase Admin not initialized");
-    res.status(500).json({ 
-      error: "Internal server error", 
-      message: "Authentication service unavailable" 
+  if (!isFirebaseAuthAvailable()) {
+    const authInfo = getFirebaseAuthInfo();
+    const requestId = req.headers["x-request-id"] || `req-${Date.now()}`;
+    
+    Logger.error("authRequired: Firebase Admin not initialized", {
+      route: req.path,
+      method: req.method,
+      origin: req.headers.origin || "none",
+      hasAuthHeader: !!authHeader,
+      firebaseInitialized: authInfo.initialized,
+      projectId: authInfo.projectId,
+      credentialSource: authInfo.credentialSource,
+      error: authInfo.error,
+      errorDetails: authInfo.errorDetails,
+      requestId
+    });
+    
+    res.status(503).json({ 
+      error: "AUTH_UNAVAILABLE", 
+      message: authInfo.error || "Authentication service unavailable",
+      reason: authInfo.errorDetails?.message || "Firebase Admin SDK not initialized",
+      requestId
     });
     return;
   }

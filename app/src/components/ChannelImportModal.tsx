@@ -3,10 +3,7 @@ import { X, Upload, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useAuthStore } from "../stores/authStore";
 import { useChannelStore } from "../stores/channelStore";
 import { getAuthToken } from "../utils/auth";
-
-const backendBaseUrl =
-  (import.meta.env.VITE_BACKEND_URL as string | undefined) ||
-  "http://localhost:8080";
+import { API_BASE_URL as backendBaseUrl } from "../config/api";
 
 interface ChannelImportModalProps {
   isOpen: boolean;

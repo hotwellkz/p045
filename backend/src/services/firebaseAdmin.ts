@@ -46,20 +46,38 @@ if (!admin.apps.length) {
           Logger.error("Failed to initialize Firebase Admin from env variables", initError);
         }
         } else {
-          // Не пытаемся использовать Application Default Credentials без явной настройки
-          // Это может привести к ошибкам при использовании Firestore
-          Logger.warn(
-            "Firebase Admin not initialized: no credentials provided. " +
-            "Set FIREBASE_SERVICE_ACCOUNT or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY. " +
-            "Endpoints requiring Firestore will return 503."
-          );
-          Logger.warn("Firebase Admin: missing env variables", {
-            hasServiceAccount: !!process.env.FIREBASE_SERVICE_ACCOUNT,
-            hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
-            hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
-            hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY
-          });
-          firebaseInitialized = false;
+          // Попытка использовать Application Default Credentials (ADC) в Cloud Run
+          // Это работает если сервис запущен в Cloud Run с правильным service account
+          if (process.env.FIREBASE_USE_ADC === "true" || process.env.GOOGLE_CLOUD_PROJECT) {
+            try {
+              admin.initializeApp({
+                projectId: process.env.GOOGLE_CLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || "prompt-6a4fd"
+              });
+              firebaseInitialized = true;
+              Logger.info("Firebase Admin initialized using Application Default Credentials (ADC)");
+            } catch (adcError) {
+              firebaseError = adcError as Error;
+              Logger.error("Failed to initialize Firebase Admin using ADC", adcError);
+              firebaseInitialized = false;
+            }
+          } else {
+            // Не пытаемся использовать Application Default Credentials без явной настройки
+            // Это может привести к ошибкам при использовании Firestore
+            Logger.warn(
+              "Firebase Admin not initialized: no credentials provided. " +
+              "Set FIREBASE_SERVICE_ACCOUNT or FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, or FIREBASE_USE_ADC=true. " +
+              "Endpoints requiring Firestore will return 503."
+            );
+            Logger.warn("Firebase Admin: missing env variables", {
+              hasServiceAccount: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+              hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+              hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+              hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
+              hasUseADC: process.env.FIREBASE_USE_ADC === "true",
+              googleCloudProject: process.env.GOOGLE_CLOUD_PROJECT || "not set"
+            });
+            firebaseInitialized = false;
+          }
         }
     }
   } catch (error) {
@@ -103,5 +121,51 @@ export function getFirestoreInfo(): {
 // Функция для получения ошибки инициализации
 export function getFirebaseError(): Error | null {
   return firebaseError;
+}
+
+// Функция для проверки инициализации Firebase Auth (не только Firestore)
+export function isFirebaseAuthAvailable(): boolean {
+  return firebaseInitialized && admin.apps.length > 0;
+}
+
+// Функция для получения детальной информации об инициализации Auth
+export function getFirebaseAuthInfo(): {
+  initialized: boolean;
+  projectId?: string;
+  credentialSource?: string;
+  error?: string;
+  errorDetails?: {
+    name: string;
+    message: string;
+    stack?: string;
+  };
+} {
+  if (!firebaseInitialized) {
+    return {
+      initialized: false,
+      error: firebaseError?.message || "Firebase Admin not initialized",
+      errorDetails: firebaseError ? {
+        name: firebaseError.name,
+        message: firebaseError.message,
+        stack: firebaseError.stack
+      } : undefined
+    };
+  }
+  
+  const projectId = process.env.FIREBASE_PROJECT_ID || 
+    (admin.apps[0]?.options?.projectId as string | undefined);
+  
+  let credentialSource = "unknown";
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    credentialSource = "FIREBASE_SERVICE_ACCOUNT";
+  } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    credentialSource = "individual_env_variables";
+  }
+  
+  return {
+    initialized: true,
+    projectId: projectId || "unknown",
+    credentialSource
+  };
 }
 

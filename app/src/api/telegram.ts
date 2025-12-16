@@ -1,9 +1,7 @@
 import axios from "axios";
 import { getAuth } from "firebase/auth";
 
-const backendBaseUrl =
-  (import.meta.env.VITE_BACKEND_URL as string | undefined) ||
-  "http://localhost:8080";
+import { API_BASE_URL as backendBaseUrl } from "../config/api";
 
 async function getAuthHeader() {
   const auth = getAuth();

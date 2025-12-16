@@ -16,6 +16,10 @@ console.error = function(...args: any[]) {
   originalConsoleError.apply(console, args);
 };
 
+// Импортируем Logger до использования
+import { Logger } from "./utils/logger";
+import { isFirebaseAuthAvailable, getFirebaseAuthInfo } from "./services/firebaseAdmin";
+
 // Также обрабатываем unhandledRejection для TIMEOUT ошибок
 process.on("unhandledRejection", (reason: any) => {
   if (reason?.message === "TIMEOUT" || reason?.message?.includes("TIMEOUT")) {
@@ -41,49 +45,92 @@ import adminRoutes from "./routes/adminRoutes";
 import helpRoutes from "./routes/helpRoutes";
 import userSettingsRoutes from "./routes/userSettingsRoutes";
 import { processAutoSendTick } from "./services/autoSendScheduler";
-import { Logger } from "./utils/logger";
 import { getFirestoreInfo, isFirestoreAvailable } from "./services/firebaseAdmin";
 
 const app = express();
 // Cloud Run задаёт порт через переменную окружения PORT, по умолчанию 8080
 const port = Number(process.env.PORT) || 8080;
 
-// Нормализуем FRONTEND_ORIGIN (убираем завершающий слеш)
+// Нормализуем origin (убираем завершающий слеш)
 const normalizeOrigin = (origin: string | undefined): string | undefined => {
   if (!origin) return undefined;
-  return origin.replace(/\/+$/, ""); // Убираем завершающие слеши
+  return origin.replace(/\/+$/, "");
 };
 
-const frontendOrigin = normalizeOrigin(process.env.FRONTEND_ORIGIN) ?? "http://localhost:5173";
+// Whitelist разрешённых origins
+const getAllowedOrigins = (): string[] => {
+  const origins: string[] = [];
+  
+  // Production origins
+  origins.push("https://shortsai.ru");
+  origins.push("https://www.shortsai.ru");
+  
+  // Dev origins (только в development)
+  if (process.env.NODE_ENV !== "production") {
+    origins.push("http://localhost:5173");
+    origins.push("http://localhost:3000");
+  }
+  
+  // Дополнительный origin из env (если задан)
+  const envOrigin = normalizeOrigin(process.env.FRONTEND_ORIGIN);
+  if (envOrigin && !origins.includes(envOrigin)) {
+    origins.push(envOrigin);
+  }
+  
+  return origins;
+};
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Разрешаем запросы без origin (например, Postman, curl)
-      if (!origin) {
-        return callback(null, true);
-      }
-      
-      // Нормализуем origin (убираем завершающий слеш)
-      const normalizedOrigin = origin.replace(/\/+$/, "");
-      const normalizedFrontendOrigin = frontendOrigin.replace(/\/+$/, "");
-      
-      // Разрешаем запросы с нормализованного origin
-      if (normalizedOrigin === normalizedFrontendOrigin) {
-        return callback(null, true);
-      }
-      
-      // Также разрешаем запросы с завершающим слешом для совместимости
-      if (normalizedOrigin + "/" === normalizedFrontendOrigin || 
-          normalizedOrigin === normalizedFrontendOrigin + "/") {
-        return callback(null, true);
-      }
-      
-      callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true
-  })
-);
+const allowedOrigins = getAllowedOrigins();
+
+// CORS конфигурация
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Разрешаем запросы без origin (например, Postman, curl, server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    const normalizedOrigin = normalizeOrigin(origin);
+    
+    if (!normalizedOrigin) {
+      return callback(null, true);
+    }
+    
+    // Проверяем whitelist
+    if (allowedOrigins.includes(normalizedOrigin)) {
+      return callback(null, true);
+    }
+    
+    // Логируем отклонённый origin для диагностики
+    Logger.warn("CORS: origin not allowed", {
+      origin: normalizedOrigin,
+      allowedOrigins,
+      method: "OPTIONS"
+    });
+    
+    callback(new Error(`Origin ${normalizedOrigin} is not allowed by CORS`));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Authorization",
+    "Content-Type",
+    "Accept",
+    "X-Requested-With",
+    "x-firebase-appcheck",
+    "x-client-version"
+  ],
+  exposedHeaders: ["Content-Length", "Content-Type"],
+  credentials: true,
+  maxAge: 86400, // 24 часа
+  optionsSuccessStatus: 204
+};
+
+// CORS middleware должен быть ПЕРВЫМ, до всех остальных middleware
+app.use(cors(corsOptions));
+
+// Явный обработчик OPTIONS для всех путей (preflight)
+// Это гарантирует, что OPTIONS всегда отвечает 204 с правильными заголовками
+app.options("*", cors(corsOptions));
 // Увеличиваем лимит размера тела запроса для импорта каналов (до 10MB)
 app.use(express.json({ limit: "10mb" }));
 app.use(express.static("public")); // Для статических файлов (HTML страница для OAuth)
@@ -95,6 +142,7 @@ app.use("/api/prompt", promptRoutes);
 app.use("/api/google-drive", googleDriveRoutes);
 app.use("/api/google-drive-integration", googleDriveIntegrationRoutes);
 app.use("/api/debug", debugRoutes);
+app.use("/internal/debug", debugRoutes); // Альтернативный путь для диагностики
 app.use("/api/test", testFirestoreRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/channels", channelRoutes);
@@ -124,6 +172,40 @@ Logger.info("Backend routes registered", {
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
+});
+
+// Health check для аутентификации / Firebase
+app.get("/health/auth", (_req, res) => {
+  const authInfo = getFirebaseAuthInfo();
+  
+  if (!authInfo.initialized) {
+    return res.status(503).json({
+      ok: false,
+      code: "AUTH_UNAVAILABLE",
+      message: authInfo.error || "Firebase Admin not initialized",
+      reason: authInfo.errorDetails?.message || "Authentication service unavailable",
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  res.json({
+    ok: true,
+    code: "AUTH_OK",
+    projectId: authInfo.projectId,
+    credentialSource: authInfo.credentialSource,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Диагностический endpoint для проверки CORS
+app.get("/api/cors-test", (req, res) => {
+  const origin = req.headers.origin || "none";
+  res.json({ 
+    ok: true, 
+    origin,
+    allowedOrigins,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Слушаем на всех интерфейсах (0.0.0.0), как требует Cloud Run

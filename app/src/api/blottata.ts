@@ -1,6 +1,6 @@
 import { getAuthToken } from "./channelSchedule";
 
-const backendBaseUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
+import { API_BASE_URL as backendBaseUrl } from "../config/api";
 
 export interface TestBlottataResponse {
   success: boolean;
