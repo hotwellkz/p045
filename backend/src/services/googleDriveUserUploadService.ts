@@ -222,9 +222,17 @@ export async function uploadFileToUserDrive(params: {
       errorMessage.includes("GOOGLE_DRIVE_FOLDER_NOT_FOUND") ||
       errorMessage.includes("GOOGLE_DRIVE_PERMISSION_DENIED") ||
       errorMessage.includes("GOOGLE_DRIVE_NOT_A_FOLDER") ||
+      errorMessage.includes("GOOGLE_DRIVE_REAUTH_REQUIRED") ||
       errorMessage.includes("Google Drive integration not found") ||
-      errorMessage.includes("Refresh token not available")
+      errorMessage.includes("Refresh token not available") ||
+      errorMessage.includes("invalid_grant")
     ) {
+      // Если это invalid_grant, оборачиваем в понятное сообщение
+      if (errorMessage.includes("invalid_grant") || errorCode === "invalid_grant") {
+        throw new Error(
+          "GOOGLE_DRIVE_REAUTH_REQUIRED: Токен доступа Google Drive недействителен. Пожалуйста, переподключите Google Drive в настройках."
+        );
+      }
       throw error;
     }
 

@@ -246,20 +246,42 @@ export async function getValidAccessToken(userId: string): Promise<string> {
 
     return credentials.access_token;
   } catch (error: any) {
+    const errorMessage = String(error?.message || error);
+    const errorCode = error?.code;
+    const errorResponse = error?.response?.data;
+
     Logger.error("Failed to refresh access token", {
       userId,
       integrationId: integration.id,
-      error: error?.message || String(error),
-      errorCode: error?.code
+      error: errorMessage,
+      errorCode,
+      errorResponse
     });
+
+    // Обработка ошибки invalid_grant - refresh token недействителен
+    if (
+      errorMessage.includes("invalid_grant") ||
+      errorCode === "invalid_grant" ||
+      errorResponse?.error === "invalid_grant"
+    ) {
+      // Помечаем интеграцию как требующую переподключения
+      await updateGoogleDriveIntegration(integration.id, {
+        status: "error",
+        lastError: "Refresh token is invalid or expired. Please reconnect Google Drive."
+      });
+
+      throw new Error(
+        "GOOGLE_DRIVE_REAUTH_REQUIRED: Токен доступа Google Drive недействителен. Пожалуйста, переподключите Google Drive в настройках."
+      );
+    }
 
     // Помечаем интеграцию как ошибку
     await updateGoogleDriveIntegration(integration.id, {
       status: "error",
-      lastError: `Token refresh failed: ${error?.message || String(error)}`
+      lastError: `Token refresh failed: ${errorMessage}`
     });
 
-    throw new Error(`Failed to refresh access token: ${error?.message || String(error)}`);
+    throw new Error(`Failed to refresh access token: ${errorMessage}`);
   }
 }
 
