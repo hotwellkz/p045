@@ -28,16 +28,19 @@ info() {
 }
 
 # Константы
-VPS_PUBLIC_IP="185.104.248.130"
-SYNO_VPN_IP="10.8.0.2"
+VPS_PUBLIC_IP="159.255.37.158"
+VPS_PUBLIC_DOMAIN="vm3737624.firstbyte.club"
+SYNO_VPN_IP="10.8.0.2"  # IP Synology в VPN туннеле (если используется VPN)
+SYNO_LOCAL_IP="192.168.100.222"  # Локальный IP Synology (если прямое подключение)
 BACKEND_PORT=8080  # Порт на Synology, на котором слушает backend
 
 # Порты на VPS, которые пробрасываются на Synology
 # Формат: VPS_PORT:SYNO_PORT
+# ВАЖНО: Если используете прямое подключение (не VPN), замените SYNO_VPN_IP на SYNO_LOCAL_IP
 PORTS=(
-    "5001:$BACKEND_PORT"  # Backend API (публичный доступ)
-    "5000:5000"           # Synology DSM (опционально)
-    "6690:6690"           # Другой сервис (опционально)
+    "5000:$BACKEND_PORT"  # Backend API (публичный доступ) - HTTP
+    "5001:5001"           # Synology DSM HTTPS (опционально)
+    "6690:6690"           # Synology Drive (опционально)
     "3000:3000"           # Другой сервис (опционально)
 )
 
@@ -78,11 +81,21 @@ info "Создаю цепочку SYNOLOGY_PORTS..."
 iptables -N SYNOLOGY_PORTS 2>/dev/null || iptables -F SYNOLOGY_PORTS
 success "Цепочка создана"
 
-# 5. Настройка проброса портов
+# 5. Определение целевого IP Synology
+# Если VPN туннель активен, используем VPN IP, иначе локальный IP
+if ip link show tun0 > /dev/null 2>&1; then
+    TARGET_IP="$SYNO_VPN_IP"
+    info "Использую VPN IP: $TARGET_IP"
+else
+    TARGET_IP="$SYNO_LOCAL_IP"
+    info "Использую локальный IP: $TARGET_IP (VPN туннель не обнаружен)"
+fi
+
+# 6. Настройка проброса портов
 info "Настраиваю проброс портов..."
 for port_mapping in "${PORTS[@]}"; do
     IFS=':' read -r vps_port syno_port <<< "$port_mapping"
-    info "  Пробрасываю $VPS_PUBLIC_IP:$vps_port → $SYNO_VPN_IP:$syno_port"
+    info "  Пробрасываю $VPS_PUBLIC_IP:$vps_port → $TARGET_IP:$syno_port"
     
     # DNAT: перенаправление входящих соединений
     iptables -t nat -A PREROUTING \
@@ -90,7 +103,7 @@ for port_mapping in "${PORTS[@]}"; do
         -p tcp \
         --dport "$vps_port" \
         -j DNAT \
-        --to-destination "$SYNO_VPN_IP:$syno_port" || error "Не удалось настроить DNAT для порта $vps_port"
+        --to-destination "$TARGET_IP:$syno_port" || error "Не удалось настроить DNAT для порта $vps_port"
     
     # Разрешение в цепочке SYNOLOGY_PORTS
     iptables -A SYNOLOGY_PORTS \
@@ -100,7 +113,7 @@ for port_mapping in "${PORTS[@]}"; do
 done
 success "Проброс портов настроен"
 
-# 6. Настройка MASQUERADE для VPN сети
+# 7. Настройка MASQUERADE для VPN сети (если используется VPN)
 info "Настраиваю MASQUERADE для VPN сети..."
 iptables -t nat -A POSTROUTING \
     -s 10.8.0.0/24 \
@@ -108,7 +121,7 @@ iptables -t nat -A POSTROUTING \
     -j MASQUERADE || error "Не удалось настроить MASQUERADE"
 success "MASQUERADE настроен"
 
-# 7. Разрешение FORWARD для VPN интерфейса
+# 8. Разрешение FORWARD для VPN интерфейса (если используется VPN)
 info "Настраиваю FORWARD правила..."
 iptables -A FORWARD \
     -i "$VPN_INTERFACE" \
@@ -123,7 +136,7 @@ iptables -A FORWARD \
     -j ACCEPT || error "Не удалось настроить FORWARD (Internet → VPN)"
 success "FORWARD правила настроены"
 
-# 8. Сохранение правил iptables
+# 9. Сохранение правил iptables
 info "Сохраняю правила iptables..."
 if command -v iptables-save &> /dev/null; then
     # Для Ubuntu/Debian
@@ -143,7 +156,7 @@ if command -v iptables-save &> /dev/null; then
 fi
 success "Правила сохранены"
 
-# 9. Создание скрипта автозапуска
+# 10. Создание скрипта автозапуска
 info "Создаю скрипт автозапуска..."
 cat > /etc/systemd/system/synology-port-forward.service << EOF
 [Unit]
@@ -168,7 +181,7 @@ systemctl daemon-reload
 systemctl enable synology-port-forward.service
 success "Автозапуск настроен"
 
-# 10. Проверка правил
+# 11. Проверка правил
 info "Текущие правила NAT:"
 iptables -t nat -L PREROUTING -n -v | grep -E "DNAT|dpt" || true
 
@@ -180,11 +193,12 @@ echo ""
 info "Проброшенные порты:"
 for port_mapping in "${PORTS[@]}"; do
     IFS=':' read -r vps_port syno_port <<< "$port_mapping"
-    echo -e "${GREEN}  $VPS_PUBLIC_IP:$vps_port → $SYNO_VPN_IP:$syno_port${NC}"
+    echo -e "${GREEN}  $VPS_PUBLIC_IP:$vps_port → $TARGET_IP:$syno_port${NC}"
 done
 echo ""
 info "Проверка доступности:"
-echo -e "${GREEN}  curl -I http://$VPS_PUBLIC_IP:5001/health${NC}"
+echo -e "${GREEN}  curl -I http://$VPS_PUBLIC_IP:5000/health${NC}"
+echo -e "${GREEN}  curl -I http://$VPS_PUBLIC_DOMAIN:5000/health${NC}"
 echo ""
 info "Просмотр логов:"
 echo -e "${GREEN}  journalctl -u synology-port-forward.service -f${NC}"

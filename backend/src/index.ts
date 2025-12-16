@@ -66,6 +66,15 @@ app.use(
       const normalizedOrigin = origin.replace(/\/+$/, "");
       const normalizedFrontendOrigin = frontendOrigin.replace(/\/+$/, "");
       
+      // Поддержка wildcard для Netlify доменов (*.netlify.app)
+      if (normalizedFrontendOrigin.includes("*")) {
+        const pattern = normalizedFrontendOrigin.replace(/\*/g, ".*");
+        const regex = new RegExp(`^${pattern}$`);
+        if (regex.test(normalizedOrigin)) {
+          return callback(null, true);
+        }
+      }
+      
       // Разрешаем запросы с нормализованного origin
       if (normalizedOrigin === normalizedFrontendOrigin) {
         return callback(null, true);
@@ -75,6 +84,19 @@ app.use(
       if (normalizedOrigin + "/" === normalizedFrontendOrigin || 
           normalizedOrigin === normalizedFrontendOrigin + "/") {
         return callback(null, true);
+      }
+      
+      // Поддержка множественных доменов через запятую
+      if (normalizedFrontendOrigin.includes(",")) {
+        const allowedOrigins = normalizedFrontendOrigin.split(",").map(o => o.trim());
+        if (allowedOrigins.some(allowed => {
+          const normalizedAllowed = allowed.replace(/\/+$/, "");
+          return normalizedOrigin === normalizedAllowed || 
+                 normalizedOrigin + "/" === normalizedAllowed ||
+                 normalizedAllowed + "/" === normalizedOrigin;
+        })) {
+          return callback(null, true);
+        }
       }
       
       callback(new Error("Not allowed by CORS"));

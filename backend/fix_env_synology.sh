@@ -69,3 +69,7 @@ echo "   - TELEGRAM_API_ID, TELEGRAM_API_HASH"
 echo "   - SYNX_CHAT_ID"
 echo "   - FRONTEND_ORIGIN (URL вашего фронтенда на Netlify)"
 
+
+
+
+

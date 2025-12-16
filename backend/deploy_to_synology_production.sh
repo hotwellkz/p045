@@ -39,8 +39,8 @@ info() {
 SYNO_APP_PATH="/volume1/shortsai/app"
 SYNO_STORAGE_PATH="/volume1/shortsai/videos"
 BACKEND_PORT=8080  # Порт, на котором слушает backend на Synology
-VPS_PUBLIC_IP="185.104.248.130"
-VPS_PUBLIC_PORT=5001  # Порт на VPS, который пробрасывается на Synology
+VPS_PUBLIC_IP="159.255.37.158"
+VPS_PUBLIC_PORT=5000  # Порт на VPS, который пробрасывается на Synology
 SYNO_VPN_IP="10.8.0.2"  # IP Synology в VPN туннеле
 
 # Проверка, что скрипт запущен на Synology

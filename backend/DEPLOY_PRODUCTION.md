@@ -343,3 +343,7 @@ pm2 logs shortsai-backend | grep "Media URL generated"
 4. Правила iptables на VPS
 
 
+
+
+
+

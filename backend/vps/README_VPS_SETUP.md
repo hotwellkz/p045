@@ -48,3 +48,7 @@ curl -I http://127.0.0.1:5001/health
 - Synology должен иметь IP 10.8.0.2 в VPN сети
 
 
+
+
+
+

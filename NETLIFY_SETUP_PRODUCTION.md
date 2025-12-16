@@ -170,3 +170,7 @@ app.use(cors({ origin: FRONTEND_ORIGIN }));
 
 Проверьте, что Firebase настройки правильные и пользователь авторизован.
 
+
+
+
+
